@@ -2,7 +2,7 @@
 <html lang="de">
 <head>
 <meta charset="UTF-8">
-<title>Sharepic Creator</title>
+<title>Sharepic Generator</title>
 <style>
   @font-face {
     font-family: 'Sauna Pro';
@@ -21,14 +21,15 @@
 
   :root {
     --navy: #1C3A5A;
-    --blue: #5C7FAB;
-    --blue-soft: #D3E0EF;
-    --paper: #F5F7FA;
-    --surface: #FFFFFF;
+    --blue: #2D5481;
+    --blue-soft: #F1EADC;
+    --paper: #FAF6EE;
+    --surface: #FFFEFB;
     --ink: #1C2530;
     --ink-dim: #647082;
-    --line: #DCE3EC;
+    --line: #D8CFBD;
     --danger: #B4453A;
+    --amber: #F2A61E;
   }
 
   * { box-sizing: border-box; }
@@ -56,7 +57,7 @@
   .logo-img {
     width: 34px;
     height: 34px;
-    border-radius: 8px;
+    border-radius: 3px;
     object-fit: cover;
   }
 
@@ -82,7 +83,7 @@
   .panel {
     background: var(--surface);
     border: 1px solid var(--line);
-    border-radius: 12px;
+    border-radius: 3px;
     padding: 24px;
   }
 
@@ -91,8 +92,7 @@
   .field label {
     display: block;
     font-size: 11px;
-    letter-spacing: 0.05em;
-    text-transform: uppercase;
+    letter-spacing: 0;
     color: var(--ink-dim);
     margin-bottom: 6px;
   }
@@ -102,7 +102,7 @@
     background: var(--paper);
     border: 1px solid var(--line);
     color: var(--ink);
-    border-radius: 8px;
+    border-radius: 3px;
     padding: 10px 12px;
     font-family: 'Sauna Pro', -apple-system, sans-serif;
     font-size: 14px;
@@ -142,7 +142,7 @@
     align-items: center;
     gap: 8px;
     padding: 10px 16px;
-    border-radius: 8px;
+    border-radius: 3px;
     border: 1px solid var(--line);
     background: var(--surface);
     color: var(--navy);
@@ -168,7 +168,7 @@
     width: 100%;
     max-width: 520px;
     height: auto;
-    border-radius: 10px;
+    border-radius: 3px;
     border: 1px solid var(--line);
     display: block;
   }
@@ -180,13 +180,34 @@
     min-height: 16px;
   }
   .status.err { color: var(--danger); }
+
+  /* ---- Version 3 Look (wie LinkedIn Post Generator) ---- */
+  .header-row { margin-bottom: 28px; padding-bottom: 18px; border-bottom: 3px solid var(--amber); }
+  .logo-img { border-radius: 3px; }
+  h1 { font-size: 34px; letter-spacing: 0; }
+  .panel { border: 1px solid var(--line); border-left: 3px solid var(--amber); }
+  .field label, .section-label { font-size: 13px; font-weight: 700; color: var(--ink-dim); }
+  .field input { background: var(--surface); border: 1.5px solid var(--line); font-size: 15px; }
+  .field input:focus { border-color: var(--navy); }
+  .field-hint { font-size: 13px; }
+  .btn { border: 1.5px solid var(--navy); background: transparent; font-size: 14px; padding: 12px 18px; }
+  .btn:hover { border-color: var(--navy); background: var(--blue-soft); }
+  .btn.primary { background: var(--navy); border-color: var(--navy); color: #FFFFFF; }
+  .btn.primary:hover { filter: none; background: #14304D; }
+  .btn.ready { background: var(--navy); border-color: var(--navy); }
+  .actions-row { flex-wrap: wrap; gap: 12px; margin-top: 14px; }
+  .status { font-size: 14px; color: var(--navy); }
+  .status.err { color: var(--danger); }
+  .sharepic-svg { border-radius: 3px; }
+  .version-label { margin-top: 36px; text-align: center; font-size: 12px; color: var(--ink-dim); }
+
 </style>
 </head>
 <body>
 <div class="wrap">
   <div class="header-row">
     <img class="logo-img" src="data:image/jpeg;base64,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" alt="Logo" />
-    <h1>Sharepic Creator</h1>
+    <h1>Sharepic Generator</h1>
   </div>
 
   <div class="layout">
@@ -205,7 +226,7 @@
         <div class="field-hint">Steht im orangen Kreis</div>
       </div>
 
-      <label style="display:block; font-size:11px; letter-spacing:0.05em; text-transform:uppercase; color:var(--ink-dim); margin-bottom:8px;">Hintergrund</label>
+      <label class="section-label" style="display:block; margin-bottom:8px;">Hintergrund</label>
       <div class="variant-row">
         <button class="swatch-btn active" id="darkSwatch" style="background:#0C2136;" title="Dunkel" aria-label="Dunkel"></button>
         <button class="swatch-btn" id="lightSwatch" style="background:#4A76AE;" title="Hell" aria-label="Hell"></button>
@@ -214,7 +235,7 @@
       <div class="actions-row">
         <button class="btn primary" id="downloadPngBtn">PNG erstellen</button>
         <button class="btn" id="downloadSvgBtn">SVG laden</button>
-        <button class="btn" id="moveBtn">↻ Kreis neu platzieren</button>
+        <button class="btn" id="moveBtn">Kreis neu platzieren</button>
       </div>
       <div class="status" id="status"></div>
     </div>
@@ -224,6 +245,7 @@
     </div>
   </div>
 </div>
+  <div class="version-label">Version 3 &middot; 10.11.2026</div></div>
 
 <script>
 (function() {
