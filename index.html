@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="de">
 <head>
 <meta charset="UTF-8">
 <title>Sharepic Creator</title>
@@ -192,28 +192,29 @@
   <div class="layout">
     <div class="panel">
       <div class="field">
-        <label for="headline">Headline</label>
-        <input type="text" id="headline" placeholder="3-5 words" value="Emotionen als Chance" />
+        <label for="headline">Titel</label>
+        <input type="text" id="headline" placeholder="3-5 Wörter" value="Macht gehört auf den Tisch" />
       </div>
       <div class="field">
-        <label for="subheadline">Subheadline</label>
-        <input type="text" id="subheadline" placeholder="5-10 words" value="Gefühle erkennen, ansprechen und konstruktiv nutzen" />
+        <label for="subheadline">Untertitel</label>
+        <input type="text" id="subheadline" placeholder="5-10 Wörter" value="Warum Machtungleichheit kein Hindernis für Mediation ist" />
       </div>
       <div class="field">
         <label for="eyecatcher">Eyecatcher</label>
-        <input type="text" id="eyecatcher" placeholder="1-3 words" value="Gefühle nutzen, statt vermeiden" />
-        <div class="field-hint">Appears inside the orange circle</div>
+        <input type="text" id="eyecatcher" placeholder="1-3 Wörter" value="aus unserem Lehrbuch" />
+        <div class="field-hint">Steht im orangen Kreis</div>
       </div>
 
-      <label style="display:block; font-size:11px; letter-spacing:0.05em; text-transform:uppercase; color:var(--ink-dim); margin-bottom:8px;">Background</label>
+      <label style="display:block; font-size:11px; letter-spacing:0.05em; text-transform:uppercase; color:var(--ink-dim); margin-bottom:8px;">Hintergrund</label>
       <div class="variant-row">
-        <button class="swatch-btn active" id="darkSwatch" style="background:#0C2136;" title="Dark blue background" aria-label="Dark blue background"></button>
-        <button class="swatch-btn" id="lightSwatch" style="background:#4A76AE;" title="Light blue background" aria-label="Light blue background"></button>
+        <button class="swatch-btn active" id="darkSwatch" style="background:#0C2136;" title="Dunkel" aria-label="Dunkel"></button>
+        <button class="swatch-btn" id="lightSwatch" style="background:#4A76AE;" title="Hell" aria-label="Hell"></button>
       </div>
 
       <div class="actions-row">
-        <button class="btn primary" id="downloadPngBtn">Download PNG</button>
-        <button class="btn" id="downloadSvgBtn">Download SVG</button>
+        <button class="btn primary" id="downloadPngBtn">PNG erstellen</button>
+        <button class="btn" id="downloadSvgBtn">SVG laden</button>
+        <button class="btn" id="moveBtn">↻ Kreis neu platzieren</button>
       </div>
       <div class="status" id="status"></div>
     </div>
@@ -241,23 +242,6 @@
 
   const SHAREPIC_MARGIN = 55;
 
-  let currentVariant = 'dark';
-
-  const headlineEl = document.getElementById('headline');
-  const subheadlineEl = document.getElementById('subheadline');
-  const eyecatcherEl = document.getElementById('eyecatcher');
-  const previewContainer = document.getElementById('previewContainer');
-  const statusEl = document.getElementById('status');
-  const darkSwatch = document.getElementById('darkSwatch');
-  const lightSwatch = document.getElementById('lightSwatch');
-  const downloadPngBtn = document.getElementById('downloadPngBtn');
-  const downloadSvgBtn = document.getElementById('downloadSvgBtn');
-
-  function setStatus(msg, isErr) {
-    statusEl.textContent = msg;
-    statusEl.className = 'status' + (isErr ? ' err' : '');
-  }
-
   function getFontFaceCss() {
     let css = '';
     for (let i = 0; i < document.styleSheets.length; i++) {
@@ -268,36 +252,184 @@
             css += rules[j].cssText + '\n';
           }
         }
-      } catch (e) { /* ignore */ }
+      } catch (e) { /* cross-origin sheet, skip */ }
     }
     return css;
   }
 
-  function fitHeadlineFontSize(text) {
-    const targetWidth = 900 * 0.8;
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
-    const baseSize = 92;
-    ctx.font = '700 ' + baseSize + 'px "Sauna Pro", Georgia, serif';
-    const naturalWidth = ctx.measureText(text || '').width || 1;
-    let fontSize = baseSize;
-    const scale = targetWidth / naturalWidth;
-    if (scale > 1) fontSize = baseSize * scale;
-    return Math.round(Math.max(52, Math.min(fontSize, 124)));
+  // ---------- Sharepic-Layout: Zeilenumbrüche + Schriftgrößen (gleiche Berechnung für Vorschau und PNG) ----------
+  const SP = { size: 900, ballR: 136, ballMin: 400, ballMax: 750, ballYMin: 146, ballYMax: 158, barX: 460, barW: 440, textW: 790, textTop: 300, textMaxH: 540, headMax: 77, subMax: 39, eyeMax: 42 };
+  const SP_STOPWORDS = ['als','und','oder','der','die','das','den','dem','des','ein','eine','zu','zur','zum','mit','für','von','vor','bei','in','im','an','am','auf','um','ob','wie','wenn','statt'];
+  let spCtx = null;
+  const spWidthCache = {};
+  function spW100(text, weight) {
+    const key = weight + '|' + text;
+    if (spWidthCache[key] !== undefined) return spWidthCache[key];
+    if (!spCtx) spCtx = document.createElement('canvas').getContext('2d');
+    spCtx.font = weight + ' 100px "Sauna Pro", Georgia, serif';
+    return (spWidthCache[key] = spCtx.measureText(text).width || 1);
+  }
+  function spFontsReady() {
+    if (!document.fonts || !document.fonts.load) return Promise.resolve();
+    return Promise.all([document.fonts.load('700 40px "Sauna Pro"'), document.fonts.load('400 40px "Sauna Pro"')]).then(function() {
+      Object.keys(spWidthCache).forEach(function(k) { delete spWidthCache[k]; });
+    });
+  }
+  spFontsReady().catch(function() {});
+
+  // Beste Aufteilung in n Zeilen: möglichst gleich breite Zeilen, keine Zeile endet auf ein Füllwort (als, und, der ...)
+  function spBestSplit(words, n, weight) {
+    if (!words.length || n > words.length) return null;
+    let best = null;
+    (function rec(start, left, acc) {
+      if (left === 1) {
+        const lines = acc.concat([words.slice(start).join(' ')]);
+        let mx = 0;
+        lines.forEach(function(l, li) {
+          mx = Math.max(mx, spW100(l, weight));
+          const lastWord = l.split(' ').pop().toLowerCase().replace(/[^a-zäöüß]/g, '');
+          if (li < lines.length - 1 && SP_STOPWORDS.indexOf(lastWord) !== -1) mx *= 1.15;
+        });
+        if (!best || mx < best.score) best = { lines: lines, score: mx };
+        return;
+      }
+      for (let i = start + 1; i <= words.length - (left - 1); i++) {
+        rec(i, left - 1, acc.concat([words.slice(start, i).join(' ')]));
+      }
+    })(0, n, []);
+    if (best) best.max = Math.max.apply(null, best.lines.map(function(l) { return spW100(l, weight); }));
+    return best;
+  }
+  function spWords(text) { return String(text || '').trim().split(/\s+/).filter(Boolean); }
+  function spClamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+  function spSizeFor(maxWidth100) { return SP.textW * 0.985 / maxWidth100 * 100; }
+
+  function spFitEyecatcher(text, cx, cy) {
+    const words = spWords(text);
+    if (!words.length) return { lines: [], size: 30, dx: 0, dy: 0 };
+    const R = SP.ballR * 0.97;
+    // Text sitzt mittig im sichtbaren Teil des (angeschnittenen) Kreises
+    const dx = 0, dy = 0; // Kreis ist komplett sichtbar
+    function fits(lines, size) {
+      const lineH = size * 1.15, total = lines.length * lineH;
+      for (let i = 0; i < lines.length; i++) {
+        const yc = dy - total / 2 + (i + 0.5) * lineH;
+        const ymax = Math.abs(yc) + size * 0.42;
+        const w = spW100(lines[i], 400) * size / 100;
+        if (Math.sqrt((Math.abs(dx) + w / 2) * (Math.abs(dx) + w / 2) + ymax * ymax) > R) return false;
+        if (cx + dx - w / 2 < 24 || cx + dx + w / 2 > SP.size - 24) return false;
+        if (cy + yc - size * 0.42 < 20) return false;
+      }
+      return true;
+    }
+    function maxFit(lines) {
+      let lo = 10, hi = SP.eyeMax;
+      if (fits(lines, hi)) return hi;
+      for (let k = 0; k < 20; k++) {
+        const mid = (lo + hi) / 2;
+        if (fits(lines, mid)) lo = mid; else hi = mid;
+      }
+      return lo;
+    }
+    // Regel: Maximalgröße; wenn zu viel, in Zeilen umbrechen; wenn dann immer noch zu viel, verkleinern
+    let best = null;
+    for (let n = 1; n <= Math.min(4, words.length); n++) {
+      const sp = spBestSplit(words, n, 400);
+      if (!sp) continue;
+      const size = maxFit(sp.lines);
+      if (size >= SP.eyeMax) { best = { lines: sp.lines, size: size }; break; }
+      if (!best || size > best.size + 0.5) best = { lines: sp.lines, size: size };
+    }
+    best.size = Math.floor(best.size * 10) / 10;
+    best.dx = dx; best.dy = dy;
+    return best;
   }
 
-  function getSharepicData() {
-    return {
-      headline: headlineEl.value.trim(),
-      subheadline: subheadlineEl.value.trim(),
-      eyecatcher: eyecatcherEl.value.trim()
-    };
+  // Regel: Maximalgröße; passt es dadurch (leicht kleiner, mind. 80 % der Max-Größe) in 1 Zeile, dann 1 Zeile;
+  // sonst 2 Zeilen, bei Bedarf kleiner, damit es nie mehr als 2 Zeilen werden.
+  function spFitLines(text, weight, maxSize, minFloor) {
+    const words = spWords(text);
+    if (!words.length) return { lines: [], size: maxSize };
+    const one = spBestSplit(words, 1, weight);
+    const s1 = spSizeFor(one.max);
+    if (words.length < 2 || s1 >= maxSize * 0.8) return { lines: one.lines, size: Math.max(minFloor, Math.min(maxSize, s1)) };
+    const two = spBestSplit(words, 2, weight);
+    return { lines: two.lines, size: Math.max(minFloor, Math.min(maxSize, spSizeFor(two.max))) };
+  }
+  // Titel: Schriftgröße variabel, je nach Länge. Einzeilig, wenn die Schrift dabei mind. 62 px bleibt (kurze Titel füllen die Breite bis max. 96 px);
+  // sonst zwei Zeilen mit ausgeglichenen Umbrüchen, dort höchstens 77 px (nie mehr als zwei Zeilen)
+  function spFitHeadline(text) {
+    const words = spWords(text);
+    if (!words.length) return { lines: [], size: 70 };
+    const one = spBestSplit(words, 1, 700);
+    const s1 = spSizeFor(one.max);
+    if (words.length < 2 || s1 >= 62) return { lines: one.lines, size: Math.max(36, Math.min(96, s1)) };
+    const two = spBestSplit(words, 2, 700);
+    return { lines: two.lines, size: Math.max(36, Math.min(SP.headMax, spSizeFor(two.max))) };
+  }
+  // Untertitel füllt die Breite aus: 1 Zeile, wenn die Schrift dabei mind. 36 px bleibt, sonst 2 Zeilen (erste Zeile füllt die Breite);
+  // nie größer als 42 px bzw. 55 % des Titels
+  function spFitSub(text, headSize) {
+    const words = spWords(text);
+    if (!words.length) return { lines: [], size: 24 };
+    const ceil = Math.min(42, (headSize || 77) * 0.55);
+    const limit = SP.textW * 0.985;
+    const one = spBestSplit(words, 1, 400);
+    const s1 = spSizeFor(one.max);
+    if (words.length < 2 || s1 >= 36) return { lines: one.lines, size: Math.min(ceil, s1) };
+    // zwei Zeilen bei ceil: erste Zeile so voll wie möglich
+    let k = 1;
+    while (k < words.length - 1 && spW100(words.slice(0, k + 1).join(' '), 400) * ceil / 100 <= limit) k++;
+    const l1 = words.slice(0, k).join(' '), l2 = words.slice(k).join(' ');
+    if (spW100(l2, 400) * ceil / 100 <= limit) return { lines: [l1, l2], size: ceil };
+    const two = spBestSplit(words, 2, 400);
+    return { lines: two.lines, size: Math.max(18, Math.min(ceil, spSizeFor(two.max))) };
+  }
+
+  function spEnsureBallX(sharepic) {
+    if (typeof sharepic.ballX !== 'number' || isNaN(sharepic.ballX)) {
+      sharepic.ballX = Math.round(SP.ballMin + Math.random() * (SP.ballMax - SP.ballMin));
+    }
+    if (typeof sharepic.ballY !== 'number' || isNaN(sharepic.ballY)) {
+      sharepic.ballY = Math.round(SP.ballYMin + Math.random() * (SP.ballYMax - SP.ballYMin));
+    }
+    return sharepic.ballX;
+  }
+
+  function computeSharepicLayout(sharepic) {
+    const ballX = spEnsureBallX(sharepic);
+    const ballY = sharepic.ballY;
+    const eye = spFitEyecatcher(sharepic.eyecatcher, ballX, ballY);
+    const head = spFitHeadline(sharepic.headline);
+    const sub = spFitSub(sharepic.subheadline, head.size);
+    // Höhenwächter: Text darf nicht in den Ball hineinwachsen
+    const gap = 18;
+    function height() { return head.lines.length * head.size * 1.08 + gap + sub.lines.length * sub.size * 1.3; }
+    const h = height();
+    if (h > SP.textMaxH) {
+      const f = SP.textMaxH / h;
+      head.size *= f; sub.size *= f;
+    }
+    head.size = Math.round(head.size * 10) / 10;
+    sub.size = Math.round(sub.size * 10) / 10;
+    return { ballX: ballX, ballY: ballY, eye: eye, head: head, sub: sub, gap: gap };
+  }
+
+  function spAppendLines(parent, lines, style, make) {
+    lines.forEach(function(line) {
+      const d = make('div');
+      d.setAttribute('style', style + 'white-space:nowrap;');
+      d.textContent = line;
+      parent.appendChild(d);
+    });
   }
 
   function buildSharepicSVG(sharepic, variantKey) {
     const v = SHAREPIC_VARIANTS[variantKey] || SHAREPIC_VARIANTS.dark;
     const bgHref = SHAREPIC_BG[variantKey] || SHAREPIC_BG.dark;
     const m = SHAREPIC_MARGIN;
+    const L = computeSharepicLayout(sharepic);
+    const mkX = function(tag) { return document.createElementNS(XHTML_NS, tag); };
 
     const svg = document.createElementNS(SVG_NS, 'svg');
     svg.setAttribute('viewBox', '0 0 900 900');
@@ -320,56 +452,51 @@
     svg.appendChild(bgImage);
 
     const bar = document.createElementNS(SVG_NS, 'rect');
-    bar.setAttribute('x', '460');
+    bar.setAttribute('x', String(SP.barX));
     bar.setAttribute('y', '0');
-    bar.setAttribute('width', '440');
+    bar.setAttribute('width', String(SP.barW));
     bar.setAttribute('height', '32');
     bar.setAttribute('fill', v.bar);
     svg.appendChild(bar);
 
     const circle = document.createElementNS(SVG_NS, 'circle');
-    circle.setAttribute('cx', '692');
-    circle.setAttribute('cy', '140');
-    circle.setAttribute('r', '136');
+    circle.setAttribute('cx', String(L.ballX));
+    circle.setAttribute('cy', String(L.ballY));
+    circle.setAttribute('r', String(SP.ballR));
     circle.setAttribute('fill', v.circle);
     svg.appendChild(circle);
 
     const eyeFO = document.createElementNS(SVG_NS, 'foreignObject');
-    eyeFO.setAttribute('x', '562');
-    eyeFO.setAttribute('y', '58');
-    eyeFO.setAttribute('width', '260');
-    eyeFO.setAttribute('height', '165');
-    const eyeOuter = document.createElementNS(XHTML_NS, 'div');
+    eyeFO.setAttribute('x', String(L.ballX - SP.ballR));
+    eyeFO.setAttribute('y', String(L.ballY - SP.ballR));
+    eyeFO.setAttribute('width', String(SP.ballR * 2));
+    eyeFO.setAttribute('height', String(SP.ballR * 2));
+    const eyeOuter = mkX('div');
     eyeOuter.setAttribute('style', 'width:100%;height:100%;display:flex;align-items:center;justify-content:center;');
-    const eyeDiv = document.createElementNS(XHTML_NS, 'div');
-    eyeDiv.setAttribute('style',
-      'text-align:center;transform:rotate(4deg);' +
-      'font-family:"Sauna Pro",Georgia,serif;font-weight:400;font-size:30px;line-height:1.28;color:' + v.eyecatcherText + ';');
-    eyeDiv.textContent = sharepic.eyecatcher || '';
+    const eyeDiv = mkX('div');
+    eyeDiv.setAttribute('style', 'text-align:center;transform:translate(' + L.eye.dx + 'px,' + L.eye.dy + 'px) rotate(4deg);');
+    spAppendLines(eyeDiv, L.eye.lines,
+      'font-family:"Sauna Pro",Georgia,serif;font-weight:400;font-size:' + L.eye.size + 'px;line-height:1.15;color:' + v.eyecatcherText + ';', mkX);
     eyeOuter.appendChild(eyeDiv);
     eyeFO.appendChild(eyeOuter);
     svg.appendChild(eyeFO);
 
-    const headlineSize = fitHeadlineFontSize(sharepic.headline || '');
-    const subSize = Math.max(22, Math.round(headlineSize * 0.5));
-
     const textFO = document.createElementNS(SVG_NS, 'foreignObject');
     textFO.setAttribute('x', String(m));
-    textFO.setAttribute('y', '300');
+    textFO.setAttribute('y', String(SP.textTop));
     textFO.setAttribute('width', String(900 - 2 * m));
-    textFO.setAttribute('height', String(900 - m - 300));
-    const textDiv = document.createElementNS(XHTML_NS, 'div');
+    textFO.setAttribute('height', String(900 - m - SP.textTop));
+    const textDiv = mkX('div');
     textDiv.setAttribute('style', 'height:100%;display:flex;flex-direction:column;justify-content:flex-end;');
 
-    const headlineDiv = document.createElementNS(XHTML_NS, 'div');
-    headlineDiv.setAttribute('style',
-      'font-family:"Sauna Pro",Georgia,serif;font-weight:700;font-size:' + headlineSize + 'px;line-height:1.08;color:' + v.text + ';margin:0 0 16px;');
-    headlineDiv.textContent = sharepic.headline || '';
+    const headlineDiv = mkX('div');
+    headlineDiv.setAttribute('style', 'margin:0 0 ' + L.gap + 'px;');
+    spAppendLines(headlineDiv, L.head.lines,
+      'font-family:"Sauna Pro",Georgia,serif;font-weight:700;font-size:' + L.head.size + 'px;line-height:1.08;color:' + v.text + ';', mkX);
 
-    const subDiv = document.createElementNS(XHTML_NS, 'div');
-    subDiv.setAttribute('style',
-      'font-family:"Sauna Pro",Georgia,serif;font-weight:400;font-size:' + subSize + 'px;line-height:1.35;color:' + v.text + ';');
-    subDiv.textContent = sharepic.subheadline || '';
+    const subDiv = mkX('div');
+    spAppendLines(subDiv, L.sub.lines,
+      'font-family:"Sauna Pro",Georgia,serif;font-weight:400;font-size:' + L.sub.size + 'px;line-height:1.3;color:' + v.text + ';', mkX);
 
     textDiv.appendChild(headlineDiv);
     textDiv.appendChild(subDiv);
@@ -378,29 +505,6 @@
 
     return svg;
   }
-
-  function renderPreview() {
-    previewContainer.innerHTML = '';
-    const svgEl = buildSharepicSVG(getSharepicData(), currentVariant);
-    previewContainer.appendChild(svgEl);
-  }
-
-  darkSwatch.onclick = function() {
-    currentVariant = 'dark';
-    darkSwatch.classList.add('active');
-    lightSwatch.classList.remove('active');
-    renderPreview();
-  };
-  lightSwatch.onclick = function() {
-    currentVariant = 'light';
-    lightSwatch.classList.add('active');
-    darkSwatch.classList.remove('active');
-    renderPreview();
-  };
-
-  [headlineEl, subheadlineEl, eyecatcherEl].forEach(function(el) {
-    el.addEventListener('input', renderPreview);
-  });
 
   function serializeSvgWithNamespace(svgEl) {
     const serializer = new XMLSerializer();
@@ -415,19 +519,13 @@
     return 'data:image/svg+xml;charset=utf-8;base64,' + btoa(unescape(encodeURIComponent(svgString)));
   }
 
-  function baseFilename() {
-    const h = getSharepicData().headline;
-    return h ? h.replace(/[^a-z0-9äöüß]+/gi, '_') : 'sharepic';
-  }
-
-  downloadSvgBtn.onclick = function() {
-    const svgEl = previewContainer.querySelector('svg');
+  function downloadSvgFile(svgEl, filename) {
     const svgString = serializeSvgWithNamespace(svgEl);
     const link = document.createElement('a');
     link.href = svgToDataUri(svgString);
-    link.download = baseFilename() + '.svg';
+    link.download = filename;
     link.click();
-  };
+  }
 
   let html2canvasLoader = null;
   function loadHtml2Canvas() {
@@ -437,7 +535,7 @@
       const script = document.createElement('script');
       script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
       script.onload = function() { resolve(); };
-      script.onerror = function() { reject(new Error('html2canvas could not be loaded (network?)')); };
+      script.onerror = function() { reject(new Error('html2canvas konnte nicht geladen werden (Netzwerk?)')); };
       document.head.appendChild(script);
     });
     return html2canvasLoader;
@@ -447,8 +545,8 @@
     const v = SHAREPIC_VARIANTS[variantKey] || SHAREPIC_VARIANTS.dark;
     const bgHref = SHAREPIC_BG[variantKey] || SHAREPIC_BG.dark;
     const m = SHAREPIC_MARGIN;
-    const headlineSize = fitHeadlineFontSize(sharepic.headline || '');
-    const subSize = Math.max(22, Math.round(headlineSize * 0.5));
+    const L = computeSharepicLayout(sharepic);
+    const mkH = function(tag) { return document.createElement(tag); };
 
     const root = document.createElement('div');
     root.style.cssText = 'position:relative;width:900px;height:900px;overflow:hidden;' +
@@ -456,16 +554,16 @@
       'font-family:"Sauna Pro",Georgia,serif;';
 
     const bar = document.createElement('div');
-    bar.style.cssText = 'position:absolute;top:0;left:460px;width:440px;height:32px;background:' + v.bar + ';';
+    bar.style.cssText = 'position:absolute;top:0;left:' + SP.barX + 'px;width:' + SP.barW + 'px;height:32px;background:' + v.bar + ';';
     root.appendChild(bar);
 
     const circle = document.createElement('div');
-    circle.style.cssText = 'position:absolute;top:4px;left:556px;width:272px;height:272px;border-radius:50%;' +
+    circle.style.cssText = 'position:absolute;top:' + (L.ballY - SP.ballR) + 'px;left:' + (L.ballX - SP.ballR) + 'px;width:' + (SP.ballR * 2) + 'px;height:' + (SP.ballR * 2) + 'px;border-radius:50%;' +
       'background:' + v.circle + ';display:flex;align-items:center;justify-content:center;';
     const eyeText = document.createElement('div');
-    eyeText.style.cssText = 'transform:rotate(4deg);text-align:center;font-weight:400;font-size:30px;' +
-      'line-height:1.28;color:' + v.eyecatcherText + ';padding:0 22px;';
-    eyeText.textContent = sharepic.eyecatcher || '';
+    eyeText.style.cssText = 'transform:translate(' + L.eye.dx + 'px,' + L.eye.dy + 'px) rotate(4deg);text-align:center;';
+    spAppendLines(eyeText, L.eye.lines,
+      'font-weight:400;font-size:' + L.eye.size + 'px;line-height:1.15;color:' + v.eyecatcherText + ';', mkH);
     circle.appendChild(eyeText);
     root.appendChild(circle);
 
@@ -474,13 +572,13 @@
       'display:flex;flex-direction:column;';
 
     const headlineDiv = document.createElement('div');
-    headlineDiv.style.cssText = 'font-weight:700;font-size:' + headlineSize + 'px;line-height:1.08;' +
-      'color:' + v.text + ';margin:0 0 16px;';
-    headlineDiv.textContent = sharepic.headline || '';
+    headlineDiv.style.cssText = 'margin:0 0 ' + L.gap + 'px;';
+    spAppendLines(headlineDiv, L.head.lines,
+      'font-weight:700;font-size:' + L.head.size + 'px;line-height:1.08;color:' + v.text + ';', mkH);
 
     const subDiv = document.createElement('div');
-    subDiv.style.cssText = 'font-weight:400;font-size:' + subSize + 'px;line-height:1.35;color:' + v.text + ';';
-    subDiv.textContent = sharepic.subheadline || '';
+    spAppendLines(subDiv, L.sub.lines,
+      'font-weight:400;font-size:' + L.sub.size + 'px;line-height:1.3;color:' + v.text + ';', mkH);
 
     textBlock.appendChild(headlineDiv);
     textBlock.appendChild(subDiv);
@@ -493,12 +591,14 @@
     let node = null;
     try {
       await loadHtml2Canvas();
+      try { await spFontsReady(); } catch (e) {}
       node = buildSharepicHTMLNode(sharepic, variantKey);
       node.style.position = 'fixed';
       node.style.left = '-99999px';
       node.style.top = '0';
       document.body.appendChild(node);
 
+      // Layout/Fonts einen Frame lang setzen lassen, bevor gerastert wird
       await new Promise(function(r) { requestAnimationFrame(function() { requestAnimationFrame(r); }); });
 
       const canvas = await window.html2canvas(node, {
@@ -515,28 +615,61 @@
     }
   }
 
-  downloadPngBtn.onclick = async function() {
-    const original = downloadPngBtn.innerHTML;
-    downloadPngBtn.textContent = 'Generating…';
-    downloadPngBtn.disabled = true;
-    setStatus('Rendering image …');
+
+
+  const $ = function(id) { return document.getElementById(id); };
+  const state = { sharepic: {}, variant: 'dark' };
+  const statusEl = $('status');
+  const previewContainer = $('previewContainer');
+
+  function readFields() {
+    state.sharepic.headline = $('headline').value.trim();
+    state.sharepic.subheadline = $('subheadline').value.trim();
+    state.sharepic.eyecatcher = $('eyecatcher').value.trim();
+  }
+  function renderPreview() {
+    readFields();
+    previewContainer.innerHTML = '';
+    previewContainer.appendChild(buildSharepicSVG(state.sharepic, state.variant));
+  }
+  function setVariant(v) {
+    state.variant = v;
+    $('darkSwatch').classList.toggle('active', v === 'dark');
+    $('lightSwatch').classList.toggle('active', v === 'light');
+    renderPreview();
+  }
+  function baseFilename() {
+    const h = state.sharepic.headline;
+    return h ? h.replace(/[^a-z0-9äöüß]+/gi, '_') : 'sharepic';
+  }
+  ['headline', 'subheadline', 'eyecatcher'].forEach(function(id) { $(id).addEventListener('input', renderPreview); });
+  $('darkSwatch').onclick = function() { setVariant('dark'); };
+  $('lightSwatch').onclick = function() { setVariant('light'); };
+  $('moveBtn').onclick = function() { delete state.sharepic.ballX; delete state.sharepic.ballY; renderPreview(); };
+  $('downloadSvgBtn').onclick = function() {
+    readFields();
+    downloadSvgFile(buildSharepicSVG(state.sharepic, state.variant), baseFilename() + '.svg');
+  };
+  $('downloadPngBtn').onclick = async function() {
+    readFields();
+    statusEl.className = 'status';
+    statusEl.textContent = 'PNG wird erstellt …';
     try {
-      const pngDataUrl = await exportSharepicPng(getSharepicData(), currentVariant);
-      const link = document.createElement('a');
-      link.className = 'btn ready';
-      link.href = pngDataUrl;
-      link.download = baseFilename() + '.png';
-      link.textContent = 'Save PNG →';
-      downloadPngBtn.replaceWith(link);
-      setStatus('Ready — click "Save PNG" to download.');
-    } catch (err) {
-      console.error(err);
-      downloadPngBtn.innerHTML = original;
-      downloadPngBtn.disabled = false;
-      setStatus('Error: ' + (err.message || 'PNG export failed.'), true);
+      const dataUrl = await exportSharepicPng(state.sharepic, state.variant);
+      statusEl.textContent = '';
+      const a = document.createElement('a');
+      a.href = dataUrl;
+      a.download = baseFilename() + '.png';
+      a.textContent = 'PNG speichern →';
+      a.style.cssText = 'font-weight:700;color:var(--navy);';
+      statusEl.appendChild(a);
+    } catch (e) {
+      statusEl.className = 'status err';
+      statusEl.textContent = 'PNG-Export fehlgeschlagen: ' + e.message + ' (Internet nötig, alternativ SVG laden).';
     }
   };
 
+  spFontsReady().then(renderPreview, renderPreview);
   renderPreview();
 })();
 </script>
